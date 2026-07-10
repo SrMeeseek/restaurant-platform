@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- USUARIOS ----------
+
+enum Role {
+  ADMIN
+  WAITER
+}
+
+model User {
+  id        Int            @id @default(autoincrement())
+  firstName String
+  lastName  String
+  email     String         @unique
+  password  String
+  role      Role           @default(WAITER)
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  audits    ProductAudit[]
+}
+
+// ---------- INVENTARIO ----------
+
+enum Tipo {
+  BIEN
+  SERVICIO
+  COMBO
+}
+
+enum AuditType {
+  STOCK_ADD      // Entrada por compra
+  STOCK_CORRECT  // Corrección por conteo físico
+  PRICE_PURCHASE // Cambio en precio de compra
+  PRICE_SALE     // Cambio en precio de venta
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  tipo      Tipo
+  active    Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Product {
+  id            Int            @id @default(autoincrement())
+  name          String
+  categoryId    Int
+  category      Category       @relation(fields: [categoryId], references: [id])
+  purchasePrice Decimal?       @db.Decimal(10, 2)
+  salePrice     Decimal        @db.Decimal(10, 2)
+  hasIva        Boolean        @default(false)
+  ivaPercentage Decimal?       @db.Decimal(5, 2)
+  stock         Int?
+  active        Boolean        @default(true)
+  comboItems    ComboItem[]    @relation("ComboProducts")
+  inCombos      ComboItem[]    @relation("ComboItem")
+  audits        ProductAudit[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model ComboItem {
+  id        Int     @id @default(autoincrement())
+  comboId   Int
+  combo     Product @relation("ComboProducts", fields: [comboId], references: [id])
+  productId Int
+  product   Product @relation("ComboItem", fields: [productId], references: [id])
+  quantity  Int     @default(1)
+}
+
+// Registro unificado de todos los cambios en productos (stock y precios)
+model ProductAudit {
+  id          Int       @id @default(autoincrement())
+  productId   Int
+  product     Product   @relation(fields: [productId], references: [id])
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id])
+  type        AuditType
+  stockBefore Int?                   // Stock antes del cambio
+  stockAfter  Int?                   // Stock después del cambio
+  oldValue    Decimal?  @db.Decimal(10, 2) // Precio anterior
+  newValue    Decimal?  @db.Decimal(10, 2) // Precio nuevo
+  note        String?                // Obligatoria para stock
+  createdAt   DateTime  @default(now())
+}
