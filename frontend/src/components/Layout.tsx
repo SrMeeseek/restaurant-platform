@@ -11,6 +11,7 @@ const navItems: NavItem[] = [
   { to: '/usuarios', label: 'Usuarios', adminOnly: true },
   { to: '/categorias', label: 'Categorias', adminOnly: true },
   { to: '/productos', label: 'Productos', adminOnly: true },
+  { to: '/mesas', label: 'Mesas' },
   { to: '/cambiar-contrasena', label: 'Cambiar contraseña' },
 ];
 

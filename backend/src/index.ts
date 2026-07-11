@@ -5,6 +5,7 @@ import userRoutes from './modules/users/users.routes';
 import authRoutes from './modules/users/auth.routes';
 import categoriesRoutes from './modules/inventory/categories.routes';
 import productsRoutes from './modules/inventory/products.routes';
+import tablesRoutes from './modules/tables/tables.routes';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api/products', productsRoutes);
+app.use('/api/tables', tablesRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', message: 'Servidor corriendo' });

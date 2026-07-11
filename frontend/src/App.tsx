@@ -8,6 +8,7 @@ import CategoriesPage from './modules/inventory/CategoriesPage';
 import ProductsPage from './modules/inventory/ProductsPage';
 import ProductCreatePage from './modules/inventory/ProductCreatePage';
 import ProductEditPage from './modules/inventory/ProductEditPage';
+import TablesPage from './modules/tables/TablesPage';
 import Layout from './components/Layout';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
@@ -68,6 +69,7 @@ export default function App() {
                 </AdminRoute>
               }
             />
+            <Route path="mesas" element={<TablesPage />} />
             <Route path="cambiar-contrasena" element={<ChangePasswordPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

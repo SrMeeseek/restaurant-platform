@@ -27,6 +27,32 @@ model User {
   audits    ProductAudit[]
 }
 
+// ---------- MESAS ----------
+
+enum TableStatus {
+  LIBRE
+  OCUPADA
+  RESERVADA
+}
+
+enum MesaShape {
+  CUADRADA
+  REDONDA
+}
+
+model Mesa {
+  id        Int         @id @default(autoincrement())
+  numero    String      @unique
+  capacidad Int
+  status    TableStatus @default(LIBRE)
+  shape     MesaShape   @default(CUADRADA)
+  posX      Int         @default(0)
+  posY      Int         @default(0)
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
 // ---------- INVENTARIO ----------
 
 enum Tipo {
