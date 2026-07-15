@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { Stage, Layer, Rect, Circle, Group, Text } from 'react-konva';
 import api from '../../lib/api';
 import { useToast } from '../../components/ToastContext';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -18,18 +19,15 @@ interface Mesa {
 
 type TableStatus = Mesa['status'];
 
-interface DragState {
-  id: number;
-  offsetX: number;
-  offsetY: number;
-}
-
 // --- Constants ---
 
 const CANVAS_W = 1400;
 const CANVAS_H = 600;
 const BLOCK_W = 110;
 const BLOCK_H = 90;
+const ROUND_D = 100;
+const MIN_SCALE = 0.7;
+const MIN_CANVAS_W = Math.floor(CANVAS_W * MIN_SCALE);
 
 // --- Helpers ---
 
@@ -37,6 +35,12 @@ function statusBg(status: TableStatus): string {
   if (status === 'LIBRE') return 'bg-green-500';
   if (status === 'OCUPADA') return 'bg-red-500';
   return 'bg-yellow-400';
+}
+
+function statusFill(status: TableStatus): string {
+  if (status === 'LIBRE') return '#22c55e';
+  if (status === 'OCUPADA') return '#ef4444';
+  return '#facc15';
 }
 
 function statusLabel(status: TableStatus): string {
@@ -74,67 +78,126 @@ function MobileTableGrid({ mesas, onStatusClick }: MobileTableGridProps) {
   );
 }
 
-// --- TableBlock ---
+// --- TableShape ---
 
-interface TableBlockProps {
+function setCursor(e: { target: { getStage: () => { container: () => HTMLElement } | null } }, cursor: string) {
+  const container = e.target.getStage()?.container();
+  if (container) container.style.cursor = cursor;
+}
+
+interface TableShapeProps {
   readonly mesa: Mesa;
   readonly posX: number;
   readonly posY: number;
   readonly scale: number;
+  readonly containerHeight: number;
   readonly editMode: boolean;
-  readonly onDragStart: (e: React.MouseEvent, id: number) => void;
+  readonly onDragEnd: (id: number, x: number, y: number) => void;
   readonly onStatusClick: (mesa: Mesa) => void;
   readonly onEdit: (mesa: Mesa) => void;
   readonly onArchive: (mesa: Mesa) => void;
 }
 
-function TableBlock({ mesa, posX, posY, scale, editMode, onDragStart, onStatusClick, onEdit, onArchive }: TableBlockProps) {
-  const cursorClass = editMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer hover:brightness-110';
+function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDragEnd, onStatusClick, onEdit, onArchive }: TableShapeProps) {
   const isRound = mesa.shape === 'REDONDA';
-  const blockW = (isRound ? 100 : BLOCK_W) * scale;
-  const blockH = (isRound ? 100 : BLOCK_H) * scale;
-  const shapeClass = isRound ? 'rounded-full' : 'rounded-2xl';
-  const btnSize = Math.round(20 * scale);
-  const btnTop = Math.round(4 * scale);
-  const btnRight = Math.round(4 * scale);
+  const w = isRound ? ROUND_D : BLOCK_W;
+  const h = isRound ? ROUND_D : BLOCK_H;
+  const fill = statusFill(mesa.status);
 
   return (
-    <div
-      style={{ left: posX * scale, top: posY * scale, width: blockW, height: blockH, position: 'absolute' }}
-      role={!editMode ? 'button' : undefined}
-      tabIndex={!editMode ? 0 : undefined}
-      className={`${shapeClass} flex flex-col items-center justify-center text-white shadow-lg select-none transition-shadow overflow-hidden ${statusBg(mesa.status)} ${cursorClass}`}
-      onMouseDown={editMode ? (e) => onDragStart(e, mesa.id) : undefined}
+    <Group
+      x={posX}
+      y={posY}
+      draggable={editMode}
+      dragBoundFunc={editMode ? (pos) => ({
+        x: Math.min(Math.max(0, pos.x), (CANVAS_W - w) * scale),
+        y: Math.min(Math.max(64, pos.y), containerHeight - h * scale - 8),
+      }) : undefined}
+      onDragEnd={editMode ? (e) => onDragEnd(mesa.id, e.target.x(), e.target.y()) : undefined}
+      onDragStart={(e) => setCursor(e, 'grabbing')}
+      onMouseEnter={(e) => setCursor(e, editMode ? 'grab' : 'pointer')}
+      onMouseLeave={(e) => setCursor(e, 'default')}
       onClick={!editMode ? () => onStatusClick(mesa) : undefined}
-      onKeyDown={!editMode ? (e) => { if (e.key === 'Enter' || e.key === ' ') onStatusClick(mesa); } : undefined}
+      onTap={!editMode ? () => onStatusClick(mesa) : undefined}
     >
-      <span style={{ fontSize: `${0.875 * scale}rem` }} className="font-bold leading-tight line-clamp-2 w-full px-2 text-center break-words">{mesa.numero}</span>
-      <span style={{ fontSize: `${0.75 * scale}rem` }} className="opacity-90 mt-0.5 shrink-0">{mesa.capacidad} pers.</span>
-      {editMode && (
-        <div style={{ position: 'absolute', top: btnTop, right: btnRight }} className="flex gap-1">
-          <button
-            type="button"
-            style={{ width: btnSize, height: btnSize, fontSize: `${0.75 * scale}rem` }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onEdit(mesa); }}
-            title="Editar"
-            className="rounded bg-white/20 hover:bg-white/40 flex items-center justify-center"
-          >
-            ✎
-          </button>
-          <button
-            type="button"
-            style={{ width: btnSize, height: btnSize, fontSize: `${0.75 * scale}rem` }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onArchive(mesa); }}
-            title="Archivar"
-            className="rounded bg-white/20 hover:bg-red-600 flex items-center justify-center"
-          >
-            ✕
-          </button>
-        </div>
+      {isRound ? (
+        <Circle
+          x={ROUND_D / 2}
+          y={ROUND_D / 2}
+          radius={ROUND_D / 2}
+          fill="#ffffff"
+          stroke={fill}
+          strokeWidth={2}
+          shadowBlur={6}
+          shadowOpacity={0.18}
+          shadowColor={fill}
+        />
+      ) : (
+        <Rect
+          width={w}
+          height={h}
+          cornerRadius={12}
+          fill="#ffffff"
+          stroke={fill}
+          strokeWidth={2}
+          shadowBlur={6}
+          shadowOpacity={0.18}
+          shadowColor={fill}
+        />
       )}
-    </div>
+
+      <Text
+        text={mesa.numero}
+        x={0}
+        y={isRound ? 18 : 10}
+        width={w}
+        height={isRound ? 34 : 42}
+        align="center"
+        verticalAlign="middle"
+        fill="#111827"
+        fontStyle="bold"
+        fontSize={16}
+        ellipsis
+        wrap="word"
+        listening={false}
+      />
+
+      <Text
+        text={`${mesa.capacidad} pers.`}
+        x={0}
+        y={isRound ? 55 : 54}
+        width={w}
+        height={20}
+        align="center"
+        verticalAlign="middle"
+        fill="#6b7280"
+        fontSize={11}
+        listening={false}
+      />
+
+      {editMode && (
+        <>
+          <Group
+            x={w - 46}
+            y={4}
+            onClick={(e) => { e.cancelBubble = true; onEdit(mesa); }}
+            onTap={(e) => { e.cancelBubble = true; onEdit(mesa); }}
+          >
+            <Rect width={20} height={20} cornerRadius={3} fill="rgba(0,0,0,0.07)" />
+            <Text text="✎" width={20} height={20} align="center" verticalAlign="middle" fill="#374151" fontSize={12} listening={false} />
+          </Group>
+          <Group
+            x={w - 24}
+            y={4}
+            onClick={(e) => { e.cancelBubble = true; onArchive(mesa); }}
+            onTap={(e) => { e.cancelBubble = true; onArchive(mesa); }}
+          >
+            <Rect width={20} height={20} cornerRadius={3} fill="rgba(0,0,0,0.07)" />
+            <Text text="✕" width={20} height={20} align="center" verticalAlign="middle" fill="#374151" fontSize={12} listening={false} />
+          </Group>
+        </>
+      )}
+    </Group>
   );
 }
 
@@ -215,14 +278,8 @@ function MesaFormModal({ initial, onSave, onCancel }: MesaFormModalProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!numero.trim()) {
-      setError('El número de mesa es requerido');
-      return;
-    }
-    if (capacidad < 1) {
-      setError('La capacidad debe ser al menos 1');
-      return;
-    }
+    if (!numero.trim()) { setError('El número de mesa es requerido'); return; }
+    if (capacidad < 1) { setError('La capacidad debe ser al menos 1'); return; }
     setSaving(true);
     try {
       await onSave({ numero: numero.trim(), capacidad, shape });
@@ -242,9 +299,7 @@ function MesaFormModal({ initial, onSave, onCancel }: MesaFormModalProps) {
         </h2>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div>
-            <label htmlFor="mesa-numero" className="block text-sm font-medium text-gray-700 mb-1">
-              Número / nombre
-            </label>
+            <label htmlFor="mesa-numero" className="block text-sm font-medium text-gray-700 mb-1">Número / nombre</label>
             <input
               id="mesa-numero"
               type="text"
@@ -255,9 +310,7 @@ function MesaFormModal({ initial, onSave, onCancel }: MesaFormModalProps) {
             />
           </div>
           <div>
-            <label htmlFor="mesa-capacidad" className="block text-sm font-medium text-gray-700 mb-1">
-              Capacidad (personas)
-            </label>
+            <label htmlFor="mesa-capacidad" className="block text-sm font-medium text-gray-700 mb-1">Capacidad (personas)</label>
             <input
               id="mesa-capacidad"
               type="number"
@@ -288,19 +341,10 @@ function MesaFormModal({ initial, onSave, onCancel }: MesaFormModalProps) {
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={saving}
-              className="border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
-            >
+            <button type="button" onClick={onCancel} disabled={saving} className="border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-50 disabled:opacity-50">
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
-            >
+            <button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
               {saving ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
@@ -311,76 +355,6 @@ function MesaFormModal({ initial, onSave, onCancel }: MesaFormModalProps) {
 }
 
 // --- TablesHeader ---
-
-interface TablesHeaderProps {
-  readonly libre: number;
-  readonly ocupada: number;
-  readonly reservada: number;
-  readonly isAdmin: boolean;
-  readonly editMode: boolean;
-  readonly savingPositions: boolean;
-  readonly isMobileView: boolean;
-  readonly onEnterEdit: () => void;
-  readonly onAddMesa: () => void;
-  readonly onSavePositions: () => void;
-  readonly onCancelEdit: () => void;
-  readonly onShowArchived: () => void;
-}
-
-function TablesHeader({ libre, ocupada, reservada, isAdmin, editMode, savingPositions, isMobileView, onEnterEdit, onAddMesa, onSavePositions, onCancelEdit, onShowArchived }: TablesHeaderProps) {
-  return (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-800">Mesas</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {libre} libres · {ocupada} ocupadas · {reservada} reservadas
-        </p>
-      </div>
-      {isAdmin && !editMode && !isMobileView && (
-        <button
-          type="button"
-          onClick={onEnterEdit}
-          className="border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-50"
-        >
-          Editar plano
-        </button>
-      )}
-      {isAdmin && editMode && (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onAddMesa}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium"
-          >
-            + Agregar mesa
-          </button>
-          <button
-            type="button"
-            onClick={onShowArchived}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-50"
-          >
-            Archivadas
-          </button>
-          <button
-            type="button"
-            onClick={onSavePositions}
-            disabled={savingPositions}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
-          >
-            {savingPositions ? 'Guardando...' : 'Guardar plano'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancelEdit}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-50"
-          >
-            Cancelar
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // --- ArchivedMesasModal ---
 
@@ -414,11 +388,7 @@ function ArchivedMesasModal({ mesas, loading, onRestore, onClose }: ArchivedMesa
                 <td className="px-4 py-2 text-gray-700">{m.numero}</td>
                 <td className="px-4 py-2 text-gray-500">{m.capacidad} personas</td>
                 <td className="px-4 py-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => onRestore(m)}
-                    className="text-sm text-blue-600 hover:underline"
-                  >
+                  <button type="button" onClick={() => onRestore(m)} className="text-sm text-blue-600 hover:underline">
                     Restaurar
                   </button>
                 </td>
@@ -472,19 +442,10 @@ function TablesModals({ pendingStatus, formTarget, archiveTarget, unarchiveTarge
   return (
     <>
       {pendingStatus && (
-        <TableStatusModal
-          mesa={pendingStatus}
-          loading={statusLoading}
-          onConfirm={onStatusConfirm}
-          onCancel={onStatusCancel}
-        />
+        <TableStatusModal mesa={pendingStatus} loading={statusLoading} onConfirm={onStatusConfirm} onCancel={onStatusCancel} />
       )}
       {formTarget !== null && (
-        <MesaFormModal
-          initial={formTarget === 'new' ? null : formTarget}
-          onSave={onFormSave}
-          onCancel={onFormCancel}
-        />
+        <MesaFormModal initial={formTarget === 'new' ? null : formTarget} onSave={onFormSave} onCancel={onFormCancel} />
       )}
       {archiveTarget && (
         <ConfirmModal
@@ -532,60 +493,17 @@ export default function TablesPage() {
   const [unarchiveTarget, setUnarchiveTarget] = useState<Mesa | null>(null);
   const [unarchiveLoading, setUnarchiveLoading] = useState(false);
 
-  const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef<DragState | null>(null);
-  const scaleRef = useRef(1);
-  const [scale, setScale] = useState(1);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const [isMobileView, setIsMobileView] = useState(false);
+
+  const scale = containerWidth > 0 ? Math.max(Math.min(containerWidth / CANVAS_W, 1.4), MIN_SCALE) : MIN_SCALE;
+  const stageWidth = Math.max(containerWidth, MIN_CANVAS_W);
 
   const isAdmin = (JSON.parse(localStorage.getItem('user') ?? '{}') as { role?: string }).role === 'ADMIN';
 
-  useEffect(() => {
-    void loadMesas();
-  }, []);
-
-  // Listeners de drag a nivel de documento para que funcione fuera del canvas
-  useEffect(() => {
-    function onMouseMove(e: MouseEvent) {
-      const drag = draggingRef.current;
-      if (!drag) return;
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const s = scaleRef.current;
-      const x = Math.min(Math.max(0, (e.clientX - rect.left) / s - drag.offsetX), CANVAS_W - BLOCK_W);
-      const y = Math.min(Math.max(0, (e.clientY - rect.top) / s - drag.offsetY), CANVAS_H - BLOCK_H);
-      setDraftPos((prev) => ({ ...prev, [drag.id]: { x, y } }));
-    }
-
-    function onMouseUp() {
-      draggingRef.current = null;
-    }
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-  }, []);
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobileView(window.innerWidth < 1129);
-      const el = containerRef.current;
-      if (el) {
-        const s = Math.min(el.clientWidth / CANVAS_W, 1);
-        scaleRef.current = s;
-        setScale(s);
-      }
-    }
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  async function loadMesas() {
+  const loadMesas = useCallback(async () => {
     try {
       const res = await api.get<Mesa[]>('/tables?active=true');
       setMesas(res.data);
@@ -595,7 +513,31 @@ export default function TablesPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [showToast]);
+
+  useEffect(() => {
+    void loadMesas();
+  }, [loadMesas]);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    setIsMobileView(window.innerWidth < 1129);
+    setContainerWidth(Math.floor(rect.width));
+    setContainerHeight(Math.floor(rect.height));
+
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setIsMobileView(window.innerWidth < 1129);
+      setContainerWidth(Math.floor(width));
+      setContainerHeight(Math.floor(height));
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loading]);
 
   function handleEnterEditMode() {
     const initial: Record<number, { x: number; y: number }> = {};
@@ -605,22 +547,12 @@ export default function TablesPage() {
   }
 
   function handleCancelEdit() {
-    draggingRef.current = null;
     setDraftPos({});
     setEditMode(false);
   }
 
-  function handleDragStart(e: React.MouseEvent, id: number) {
-    e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const pos = draftPos[id] ?? { x: 0, y: 0 };
-    const s = scaleRef.current;
-    draggingRef.current = {
-      id,
-      offsetX: (e.clientX - rect.left) / s - pos.x,
-      offsetY: (e.clientY - rect.top) / s - pos.y,
-    };
+  function handleDragEnd(id: number, x: number, y: number) {
+    setDraftPos((prev) => ({ ...prev, [id]: { x: Math.round(x), y: Math.round(y) } }));
   }
 
   async function handleSavePositions() {
@@ -701,10 +633,7 @@ export default function TablesPage() {
   }
 
   async function handleToggleArchived() {
-    if (showArchived) {
-      setShowArchived(false);
-      return;
-    }
+    if (showArchived) { setShowArchived(false); return; }
     setShowArchived(true);
     setArchivedLoading(true);
     try {
@@ -738,88 +667,163 @@ export default function TablesPage() {
   const ocupada = mesas.filter((m) => m.status === 'OCUPADA').length;
   const reservada = mesas.filter((m) => m.status === 'RESERVADA').length;
 
-  if (loading) return <p className="text-gray-500 p-4">Cargando mesas...</p>;
-  if (loadFailed) return <p className="text-red-500 p-4">No se pudieron cargar las mesas. Intenta recargar la página.</p>;
+  const canvasBg: React.CSSProperties = {
+    backgroundColor: '#f3f4f6',
+    backgroundImage: 'radial-gradient(circle, #d1d5db 1.5px, transparent 1.5px)',
+    backgroundSize: `${30 * scale}px ${30 * scale}px`,
+  };
+  const canvasClass = `-m-6 relative ${
+    isMobileView
+      ? 'min-h-[calc(100%+3rem)]'
+      : 'h-[calc(100%+3rem)] overflow-x-auto overflow-y-hidden'
+  }`;
+
+  if (loading) return (
+    <div className="-m-6 h-[calc(100%+3rem)] flex items-center justify-center" style={canvasBg}>
+      <p className="text-gray-500">Cargando mesas...</p>
+    </div>
+  );
+  if (loadFailed) return (
+    <div className="-m-6 h-[calc(100%+3rem)] flex items-center justify-center" style={canvasBg}>
+      <p className="text-red-400">No se pudieron cargar las mesas. Intenta recargar la página.</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
-      <TablesHeader
-        libre={libre}
-        ocupada={ocupada}
-        reservada={reservada}
-        isAdmin={isAdmin}
-        editMode={editMode}
-        savingPositions={savingPositions}
-        isMobileView={isMobileView}
-        onEnterEdit={handleEnterEditMode}
-        onAddMesa={() => setFormTarget('new')}
-        onSavePositions={() => void handleSavePositions()}
-        onCancelEdit={handleCancelEdit}
-        onShowArchived={() => void handleToggleArchived()}
-      />
+    <>
+      {/* Canvas full-page: -m-6 cancela el p-6 del Layout, h-[calc(100%+3rem)] llena el main completo */}
+      <div
+        ref={containerRef}
+        className={canvasClass}
+        style={canvasBg}
+      >
+        {/* Konva Stage — desktop */}
+        {!isMobileView && containerWidth > 0 && containerHeight > 0 && (
+          <Stage width={stageWidth} height={containerHeight} scaleX={scale} scaleY={scale}>
+            <Layer>
+              {mesas.map((mesa) => {
+                const pos = editMode
+                  ? (draftPos[mesa.id] ?? { x: mesa.posX, y: mesa.posY })
+                  : { x: mesa.posX, y: mesa.posY };
+                return (
+                  <TableShape
+                    key={mesa.id}
+                    mesa={mesa}
+                    posX={pos.x}
+                    posY={pos.y}
+                    scale={scale}
+                    containerHeight={containerHeight}
+                    editMode={editMode}
+                    onDragEnd={handleDragEnd}
+                    onStatusClick={setPendingStatus}
+                    onEdit={setFormTarget}
+                    onArchive={setArchiveTarget}
+                  />
+                );
+              })}
+            </Layer>
+          </Stage>
+        )}
 
-      <div ref={containerRef} className="w-full">
-        {isMobileView ? (
-          <MobileTableGrid mesas={mesas} onStatusClick={setPendingStatus} />
-        ) : (
-          <>
-            {editMode && (
-              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm px-4 py-2 rounded mb-4">
-                Modo edición activo — arrastra las mesas para reposicionarlas. Los cambios no se guardan hasta hacer clic en "Guardar plano".
-              </div>
-            )}
+        {/* Mobile grid */}
+        {isMobileView && (
+          <div className="pt-20 px-4 pb-4">
+            <MobileTableGrid mesas={mesas} onStatusClick={setPendingStatus} />
+          </div>
+        )}
 
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden" style={{ width: CANVAS_W * scale }}>
-              <div
-                ref={canvasRef}
-                style={{
-                  width: CANVAS_W * scale,
-                  height: CANVAS_H * scale,
-                  position: 'relative',
-                  backgroundImage: 'radial-gradient(circle, #d1d5db 1px, transparent 1px)',
-                  backgroundSize: `${30 * scale}px ${30 * scale}px`,
-                }}
-              >
-                {mesas.map((mesa) => {
-                  const pos = editMode
-                    ? (draftPos[mesa.id] ?? { x: mesa.posX, y: mesa.posY })
-                    : { x: mesa.posX, y: mesa.posY };
-                  return (
-                    <TableBlock
-                      key={mesa.id}
-                      mesa={mesa}
-                      posX={pos.x}
-                      posY={pos.y}
-                      scale={scale}
-                      editMode={editMode}
-                      onDragStart={handleDragStart}
-                      onStatusClick={setPendingStatus}
-                      onEdit={setFormTarget}
-                      onArchive={setArchiveTarget}
-                    />
-                  );
-                })}
-              </div>
+        {/* Header overlay */}
+        <div
+          className={`${isMobileView ? 'fixed' : 'absolute top-0 left-0 right-0'} z-10 flex items-center justify-between px-6 h-16`}
+          style={{
+            ...(isMobileView ? { top: 0, left: '14rem', right: 0 } : {}),
+            backgroundColor: 'rgba(255,255,255,0.95)',
+            borderBottom: '1px solid #e5e7eb',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <div>
+            <h1 className="text-lg font-bold text-gray-800">Mesas</h1>
+            <p className="text-xs text-gray-500">
+              {libre} libres · {ocupada} ocupadas · {reservada} reservadas
+            </p>
+          </div>
+          {isAdmin && (
+            <div className="flex gap-2">
+              {editMode ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleSavePositions()}
+                    disabled={savingPositions}
+                    className="px-3 py-1.5 text-sm rounded font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition-colors"
+                  >
+                    {savingPositions ? 'Guardando...' : 'Guardar plano'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="px-3 py-1.5 text-sm rounded font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setFormTarget('new')}
+                    className="px-3 py-1.5 text-sm rounded font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  >
+                    + Agregar mesa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleArchived()}
+                    className="px-3 py-1.5 text-sm rounded font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Archivadas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleEnterEditMode}
+                    className="px-3 py-1.5 text-sm rounded font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Editar plano
+                  </button>
+                </>
+              )}
             </div>
-          </>
+          )}
+        </div>
+
+        {/* Banner modo edición */}
+        {editMode && (
+          <div
+            className="absolute left-0 right-0 z-10 text-sm px-6 py-2"
+            style={{ top: '64px', backgroundColor: '#fef9c3', borderBottom: '1px solid #fde047', color: '#854d0e' }}
+          >
+            Modo edición activo — arrastra las mesas para reposicionarlas. Los cambios no se guardan hasta hacer clic en "Guardar plano".
+          </div>
+        )}
+
+        {/* Leyenda — esquina inferior izquierda, solo en desktop */}
+        {!isMobileView && (
+          <div className="absolute bottom-4 left-6 z-10 flex gap-4 text-sm text-gray-500">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />{"Libre"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />{"Ocupada"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" />{"Reservada"}
+            </span>
+          </div>
         )}
       </div>
 
-      <div className="flex gap-4 text-sm text-gray-600">
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-green-500 inline-block" />
-          <span>Libre</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
-          <span>Ocupada</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-yellow-400 inline-block" />
-          <span>Reservada</span>
-        </span>
-      </div>
-
+      {/* Modales — fuera del canvas, posición fixed propia */}
       {showArchived && (
         <ArchivedMesasModal
           mesas={archivedMesas}
@@ -828,7 +832,6 @@ export default function TablesPage() {
           onClose={() => setShowArchived(false)}
         />
       )}
-
       <TablesModals
         pendingStatus={pendingStatus}
         formTarget={formTarget}
@@ -846,6 +849,6 @@ export default function TablesPage() {
         onUnarchiveConfirm={() => void handleUnarchiveConfirm()}
         onUnarchiveCancel={() => setUnarchiveTarget(null)}
       />
-    </div>
+    </>
   );
 }
