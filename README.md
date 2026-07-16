@@ -1,6 +1,6 @@
 # Restaurant Platform
 
-Sistema de gestión para restaurantes. Permite administrar usuarios, inventario de productos y categorías, movimientos de stock y combos. Diseñado con roles diferenciados (administrador y mesero) y una interfaz moderna orientada a operación diaria.
+Sistema de gestión para restaurantes. Permite administrar usuarios, inventario de productos y categorías, movimientos de stock y combos, y el plano interactivo de mesas. Diseñado con roles diferenciados (administrador y mesero) y una interfaz moderna orientada a operación diaria.
 
 ---
 
@@ -52,11 +52,23 @@ Sistema de gestión para restaurantes. Permite administrar usuarios, inventario 
 - Historial completo de movimientos por producto
 - Tabla de auditoría unificada (`ProductAudit`)
 
+### Mesas
+- Plano interactivo con canvas (react-konva) — vista de escritorio
+- Arrastrar y soltar mesas para reposicionarlas (modo edición)
+- Dos formas de mesa: cuadrada y redonda
+- Estados: `LIBRE`, `OCUPADA`, `RESERVADA` con cambio desde el plano
+- Escala responsiva del canvas según el ancho de ventana (mínimo 70%)
+- Archivar y restaurar mesas con modal dedicado
+- Vista móvil con tarjetas de color por estado
+- Header con contador en tiempo real de mesas por estado
+- Leyenda visual de estados en esquina inferior del plano
+- El modo edición (agregar, mover, archivar) solo disponible en escritorio
+
 ---
 
 ## Roadmap
 
-- [ ] Módulo de mesas (estados: LIBRE / OCUPADA / RESERVADA)
+- [x] Módulo de mesas (estados: LIBRE / OCUPADA / RESERVADA)
 - [ ] Módulo de pedidos
 - [ ] Módulo de caja / ventas
 - [ ] Reportes y estadísticas
@@ -75,6 +87,7 @@ restaurant-platform/
 │   │   ├── middleware/
 │   │   └── modules/
 │   │       ├── inventory/
+│   │       ├── tables/
 │   │       └── users/
 │   └── .env.example
 └── frontend/         # SPA en React + Vite
@@ -85,6 +98,7 @@ restaurant-platform/
     │   └── modules/
     │       ├── dashboard/
     │       ├── inventory/
+    │       ├── tables/
     │       └── users/
     └── .env.example
 ```
