@@ -32,15 +32,21 @@ const MIN_CANVAS_W = Math.floor(CANVAS_W * MIN_SCALE);
 // --- Helpers ---
 
 function statusBg(status: TableStatus): string {
-  if (status === 'LIBRE') return 'bg-green-500';
-  if (status === 'OCUPADA') return 'bg-red-500';
-  return 'bg-yellow-400';
+  if (status === 'LIBRE') return 'bg-green-500 hover:bg-green-600';
+  if (status === 'OCUPADA') return 'bg-red-500 hover:bg-red-600';
+  return 'bg-yellow-400 hover:bg-yellow-500';
 }
 
 function statusFill(status: TableStatus): string {
   if (status === 'LIBRE') return '#22c55e';
   if (status === 'OCUPADA') return '#ef4444';
   return '#facc15';
+}
+
+function statusHoverFill(status: TableStatus): string {
+  if (status === 'LIBRE') return '#16a34a';
+  if (status === 'OCUPADA') return '#dc2626';
+  return '#eab308';
 }
 
 function statusLabel(status: TableStatus): string {
@@ -67,7 +73,7 @@ function MobileTableGrid({ mesas, onStatusClick }: MobileTableGridProps) {
           key={mesa.id}
           type="button"
           onClick={() => onStatusClick(mesa)}
-          className={`${statusBg(mesa.status)} rounded-xl p-4 text-white text-left shadow-sm active:brightness-90 transition-all`}
+          className={`${statusBg(mesa.status)} rounded-xl p-4 text-white text-left active:brightness-90 transition-colors`}
         >
           <p className="font-bold text-base leading-tight line-clamp-2 break-words">{mesa.numero}</p>
           <p className="text-xs opacity-80 mt-1">{mesa.capacidad} pers.</p>
@@ -102,7 +108,8 @@ function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDrag
   const isRound = mesa.shape === 'REDONDA';
   const w = isRound ? ROUND_D : BLOCK_W;
   const h = isRound ? ROUND_D : BLOCK_H;
-  const fill = statusFill(mesa.status);
+  const [hovered, setHovered] = useState(false);
+  const shapeFill = hovered ? statusHoverFill(mesa.status) : statusFill(mesa.status);
 
   return (
     <Group
@@ -114,9 +121,9 @@ function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDrag
         y: Math.min(Math.max(64, pos.y), containerHeight - h * scale - 8),
       }) : undefined}
       onDragEnd={editMode ? (e) => onDragEnd(mesa.id, e.target.x(), e.target.y()) : undefined}
-      onDragStart={(e) => setCursor(e, 'grabbing')}
-      onMouseEnter={(e) => setCursor(e, editMode ? 'grab' : 'pointer')}
-      onMouseLeave={(e) => setCursor(e, 'default')}
+      onDragStart={(e) => { setHovered(false); setCursor(e, 'grabbing'); }}
+      onMouseEnter={(e) => { setHovered(true); setCursor(e, editMode ? 'grab' : 'pointer'); }}
+      onMouseLeave={(e) => { setHovered(false); setCursor(e, 'default'); }}
       onClick={!editMode ? () => onStatusClick(mesa) : undefined}
       onTap={!editMode ? () => onStatusClick(mesa) : undefined}
     >
@@ -125,24 +132,14 @@ function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDrag
           x={ROUND_D / 2}
           y={ROUND_D / 2}
           radius={ROUND_D / 2}
-          fill="#ffffff"
-          stroke={fill}
-          strokeWidth={2}
-          shadowBlur={6}
-          shadowOpacity={0.18}
-          shadowColor={fill}
+          fill={shapeFill}
         />
       ) : (
         <Rect
           width={w}
           height={h}
           cornerRadius={12}
-          fill="#ffffff"
-          stroke={fill}
-          strokeWidth={2}
-          shadowBlur={6}
-          shadowOpacity={0.18}
-          shadowColor={fill}
+          fill={shapeFill}
         />
       )}
 
@@ -154,7 +151,7 @@ function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDrag
         height={isRound ? 34 : 42}
         align="center"
         verticalAlign="middle"
-        fill="#111827"
+        fill="white"
         fontStyle="bold"
         fontSize={16}
         ellipsis
@@ -170,7 +167,7 @@ function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDrag
         height={20}
         align="center"
         verticalAlign="middle"
-        fill="#6b7280"
+        fill="rgba(255,255,255,0.75)"
         fontSize={11}
         listening={false}
       />
@@ -183,8 +180,8 @@ function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDrag
             onClick={(e) => { e.cancelBubble = true; onEdit(mesa); }}
             onTap={(e) => { e.cancelBubble = true; onEdit(mesa); }}
           >
-            <Rect width={20} height={20} cornerRadius={3} fill="rgba(0,0,0,0.07)" />
-            <Text text="✎" width={20} height={20} align="center" verticalAlign="middle" fill="#374151" fontSize={12} listening={false} />
+            <Rect width={20} height={20} cornerRadius={3} fill="rgba(0,0,0,0.15)" />
+            <Text text="✎" width={20} height={20} align="center" verticalAlign="middle" fill="white" fontSize={12} listening={false} />
           </Group>
           <Group
             x={w - 24}
@@ -192,8 +189,8 @@ function TableShape({ mesa, posX, posY, scale, containerHeight, editMode, onDrag
             onClick={(e) => { e.cancelBubble = true; onArchive(mesa); }}
             onTap={(e) => { e.cancelBubble = true; onArchive(mesa); }}
           >
-            <Rect width={20} height={20} cornerRadius={3} fill="rgba(0,0,0,0.07)" />
-            <Text text="✕" width={20} height={20} align="center" verticalAlign="middle" fill="#374151" fontSize={12} listening={false} />
+            <Rect width={20} height={20} cornerRadius={3} fill="rgba(0,0,0,0.15)" />
+            <Text text="✕" width={20} height={20} align="center" verticalAlign="middle" fill="white" fontSize={12} listening={false} />
           </Group>
         </>
       )}
@@ -695,7 +692,7 @@ export default function TablesPage() {
       <div
         ref={containerRef}
         className={canvasClass}
-        style={canvasBg}
+        style={isMobileView ? { backgroundColor: '#ffffff' } : canvasBg}
       >
         {/* Konva Stage — desktop */}
         {!isMobileView && containerWidth > 0 && containerHeight > 0 && (
@@ -754,6 +751,20 @@ export default function TablesPage() {
                 <>
                   <button
                     type="button"
+                    onClick={() => setFormTarget('new')}
+                    className="px-3 py-1.5 text-sm rounded font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  >
+                    + Agregar mesa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleArchived()}
+                    className="px-3 py-1.5 text-sm rounded font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Archivadas
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void handleSavePositions()}
                     disabled={savingPositions}
                     className="px-3 py-1.5 text-sm rounded font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition-colors"
@@ -769,29 +780,13 @@ export default function TablesPage() {
                   </button>
                 </>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setFormTarget('new')}
-                    className="px-3 py-1.5 text-sm rounded font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                  >
-                    + Agregar mesa
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleToggleArchived()}
-                    className="px-3 py-1.5 text-sm rounded font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Archivadas
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleEnterEditMode}
-                    className="px-3 py-1.5 text-sm rounded font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Editar plano
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={isMobileView ? () => showToast('El editor de plano solo está disponible en la versión de escritorio', 'error') : handleEnterEditMode}
+                  className="px-3 py-1.5 text-sm rounded font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Editar plano
+                </button>
               )}
             </div>
           )}
